@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "steam-judger-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-04-10",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  // "vars": {
+  //   "MY_VAR": "my-variable"
+  // },
+  "kv_namespaces": [
+    {
+      "binding": "MY_KV",
+      "id": "1230c1c93ea64b4fa3abe5bce7886a97"
+    }
+  ]
+  // "r2_buckets": [
+  //   {
+  //     "binding": "MY_BUCKET",
+  //     "bucket_name": "my-bucket"
+  //   }
+  // ],
+  // "d1_databases": [
+  //   {
+  //     "binding": "MY_DB",
+  //     "database_name": "my-database",
+  //     "database_id": ""
+  //   }
+  // ],
+  // "ai": {
+  //   "binding": "AI"
+  // },
+  // "observability": {
+  //   "enabled": true,
+  //   "head_sampling_rate": 1
+  // }
+}
