@@ -18,7 +18,7 @@ type AnalyzerBindings = {
 const analyzerApp = new Hono<{ Bindings: AnalyzerBindings }>();
 
 // const MODEL = 'deepseek-r1-250120';
-const MODEL = 'deepseek-r1-distill-qwen-32b-250120';
+const MODEL = 'doubao-1-5-lite-32k-250115';
 const BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 
 // Helper to format game data for the prompt
