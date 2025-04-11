@@ -194,4 +194,10 @@ analyzerApp.get('/:dataId', async (c) => {
     }
 });
 
+analyzerApp.get('/model', (c) => {
+    console.log("Request received for /model endpoint.");
+    // Return the value of the MODEL constant in a JSON object
+    return c.json({ modelName: MODEL, version: 'v1.2.0' });
+});
+
 export default analyzerApp; // Export the Hono app instance for this route
