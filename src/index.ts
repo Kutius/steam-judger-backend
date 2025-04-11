@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 // Assuming getFormattedSteamGames is in a separate file
 import { getFormattedSteamGames, FormattedGameInfo } from './steam'; // Adjust path if needed
-import analyzerApp from './api/ai';
+import analyzerApp, { MODEL } from './api/ai';
 
 type Bindings = {
   MY_KV: KVNamespace;
@@ -103,6 +103,12 @@ app.get('/games/:steamid', async (c) => {
     console.error(`Unexpected error processing request for ${steamId}:`, error);
     throw new HTTPException(500, { message: 'An internal server error occurred.' });
   }
+});
+
+app.get('/model', (c) => {
+  console.log("Request received for /model endpoint.");
+  // Return the value of the MODEL constant in a JSON object
+  return c.json({ modelName: MODEL, version: 'v1.2.0' });
 });
 
 // --- Mount the analyzer routes ---

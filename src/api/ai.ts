@@ -18,7 +18,7 @@ type AnalyzerBindings = {
 const analyzerApp = new Hono<{ Bindings: AnalyzerBindings }>();
 
 // const MODEL = 'deepseek-r1-250120';
-const MODEL = 'deepseek-chat';
+export const MODEL = 'deepseek-chat';
 const BASE_URL = 'https://api.deepseek.com'
 
 // Helper to format game data for the prompt
@@ -192,12 +192,6 @@ analyzerApp.get('/:dataId', async (c) => {
             throw new HTTPException(500, { message: 'An internal server error occurred during analysis.' });
         }
     }
-});
-
-analyzerApp.get('/model', (c) => {
-    console.log("Request received for /model endpoint.");
-    // Return the value of the MODEL constant in a JSON object
-    return c.json({ modelName: MODEL, version: 'v1.2.0' });
 });
 
 export default analyzerApp; // Export the Hono app instance for this route
