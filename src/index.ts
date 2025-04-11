@@ -51,10 +51,15 @@ app.get('/games/:steamid', async (c) => {
 
     if (cachedData) {
       console.log(`Cache hit for ${steamId}. Returning existing data ID.`);
+      // Parse the cached data to get the game count
+      const parsedData = JSON.parse(cachedData);
+      const gameCount = parsedData.length;
+      
       // Requirement: Return the ID (key) of the cached data
       return c.json({
         dataId: cacheKey,
         source: 'cache',
+        gameCount: gameCount,
         message: `Data retrieved from cache. Expires in approximately ${CACHE_TTL_SECONDS} seconds from creation.`
       });
     }
@@ -86,6 +91,7 @@ app.get('/games/:steamid', async (c) => {
     return c.json({
       dataId: cacheKey,
       source: 'api',
+      gameCount: freshGameData.length,
       message: `Fetched fresh data from Steam API and stored in cache. Games found: ${freshGameData.length}.`
     });
 
