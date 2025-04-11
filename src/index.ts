@@ -11,7 +11,7 @@ type Bindings = {
   OPENAI_API_KEY: string;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings }>({ basePath: '/api' });
 
 // Constants
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
