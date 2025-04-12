@@ -125,7 +125,7 @@ analyzerApp.get('/:dataId', async (c) => {
             model: MODEL, // Use the specific o1 model identifier   
             messages: messages,
             stream: true,
-            temperature: 0.7, // Adjust temperature for creativity vs consistency
+            temperature: 1.3, // Adjust temperature for creativity vs consistency
             // max_tokens: 1000, // Optional: Limit response length
         });
 
