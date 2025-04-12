@@ -108,7 +108,7 @@ app.get('/games/:steamid', async (c) => {
 app.get('/model', (c) => {
   console.log("Request received for /model endpoint.");
   // Return the value of the MODEL constant in a JSON object
-  return c.json({ modelName: MODEL, version: 'v1.2.0' });
+  return c.json({ modelName: MODEL, version: 'v1.2.0413' });
 });
 
 // --- Mount the analyzer routes ---
