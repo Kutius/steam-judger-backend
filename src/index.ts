@@ -186,6 +186,102 @@ app.get('/user/:steamid', async (c) => {
   }
 })
 
+// --- API Endpoint: Query User Game Data ---
+app.get('/query/:steamid', async (c) => {
+  const steamId = c.req.param('steamid')
+  const apiKey = c.env.STEAM_API_KEY
+  const d1 = c.env.DB
+
+  // --- Input Validation ---
+  if (!isValidSteamId64(steamId)) {
+    throw new HTTPException(400, { message: 'Invalid SteamID format. Please provide a 64-bit SteamID.' })
+  }
+
+  if (!apiKey) {
+    console.error('STEAM_API_KEY environment variable not set.')
+    throw new HTTPException(500, { message: 'Server configuration error: API key missing.' })
+  }
+
+  const db = initDbConnect(d1)
+
+  try {
+    // --- 1. Check D1 Cache ---
+    console.log(`Checking database for steamId: ${steamId}`)
+
+    const cachedResult = await db
+      .select()
+      .from(steamGamesCache)
+      .where(eq(steamGamesCache.steamId, steamId))
+      .limit(1)
+
+    if (cachedResult.length > 0) {
+      // Data found in database, return it directly
+      const cachedEntry = cachedResult[0]
+      const gameCount = cachedEntry.gameData.length
+      const cachedAt = cachedEntry.cachedAt
+
+      console.log(`Data found in database for ${steamId}. Cached at: ${cachedAt.toISOString()}, Game Count: ${gameCount}`)
+
+      return c.json({
+        steamId,
+        source: 'database',
+        gameCount,
+        cachedAt: cachedAt.toISOString(),
+        games: cachedEntry.gameData,
+      })
+    }
+
+    // --- 2. No data in database: Fetch from Steam API ---
+    console.log(`No data found in database for ${steamId}. Fetching from Steam API...`)
+    let gameData: FormattedGameInfo[]
+
+    try {
+      gameData = await getFormattedSteamGames(apiKey, steamId)
+    }
+    catch (steamError: any) {
+      console.error(`Error fetching data from Steam API for ${steamId}:`, steamError.message || steamError)
+      throw new HTTPException(502, { message: `Failed to fetch data from Steam API: ${steamError.message || 'Unknown error'}` })
+    }
+
+    // --- 3. Store Data in Database ---
+    const now = new Date()
+    const gameCount = gameData.length
+
+    console.log(`Storing ${gameCount} games in database for ${steamId}. Timestamp: ${now.toISOString()}`)
+
+    await db.insert(steamGamesCache)
+      .values({
+        steamId,
+        gameData,
+        cachedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: steamGamesCache.steamId,
+        set: {
+          gameData,
+          cachedAt: now,
+        },
+      })
+
+    // --- 4. Return the fetched and stored data ---
+    return c.json({
+      steamId,
+      source: 'api',
+      gameCount,
+      cachedAt: now.toISOString(),
+      games: gameData,
+    })
+  }
+  catch (error: any) {
+    // Catch DB errors or re-thrown exceptions
+    if (error instanceof HTTPException) {
+      throw error // Re-throw Hono's exceptions
+    }
+    console.error(`Unexpected error processing query request for ${steamId}:`, error)
+    throw new HTTPException(500, { message: 'An internal server error occurred.' })
+  }
+})
+
 // --- Mount the analyzer routes ---
 // All requests starting with /analyze will be handled by analyzerApp
 app.route('/analyze', analyzerApp)
