@@ -27,9 +27,9 @@
       "binding": "DB",
       "database_name": "steam-data",
       "database_id": "120034d0-a283-4bdd-ad8c-387c12324f47",
-      "migrations_dir": "drizzle",
+      "migrations_dir": "drizzle"
     }
-  ],
+  ]
   // "ai": {
   //   "binding": "AI"
   // },

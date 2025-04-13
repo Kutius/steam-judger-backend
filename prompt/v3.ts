@@ -1,6 +1,6 @@
-const currentDate = new Date().toISOString().split('T')[0]; // 获取当前日期，格式为 'YYYY-MM-DD'
-
-export const promptV3 = `
+export function promptV3() {
+  const currentDate = new Date().toISOString().split('T')[0] // 获取当前日期，格式为 'YYYY-MM-DD'
+  return `
 基于用户的Steam游戏库数据（包含游戏名称、时长），请生成一篇毒舌幽默向的锐评报告。要求：
 
 风格：犀利吐槽为主，结合互联网流行梗、夸张比喻，语言风格参考‘老湿吐槽’或‘阴阳师文学’，避免脏话但保持‘阴阳怪气’；
@@ -16,3 +16,4 @@ export const promptV3 = `
 今天是${currentDate}，请以今天的日期为基准。
 接下来会提供一个游戏列表，每行格式为 "- {游戏名称}: {游玩时长}"
 `
+}
