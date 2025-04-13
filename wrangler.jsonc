@@ -14,20 +14,21 @@
       "binding": "MY_KV",
       "id": "1230c1c93ea64b4fa3abe5bce7886a97"
     }
-  ]
+  ],
   // "r2_buckets": [
   //   {
   //     "binding": "MY_BUCKET",
   //     "bucket_name": "my-bucket"
   //   }
   // ],
-  // "d1_databases": [
-  //   {
-  //     "binding": "MY_DB",
-  //     "database_name": "my-database",
-  //     "database_id": ""
-  //   }
-  // ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "steam-data",
+      "database_id": "120034d0-a283-4bdd-ad8c-387c12324f47",
+      "migrations_dir": "drizzle",
+    }
+  ],
   // "ai": {
   //   "binding": "AI"
   // },

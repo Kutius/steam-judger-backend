@@ -1,27 +1,18 @@
-// src/index.ts
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-// Assuming getFormattedSteamGames is in a separate file
-import { getFormattedSteamGames, getSteamUserInfo } from './core/steam'; // Adjust path if needed
+import { getFormattedSteamGames, getSteamUserInfo } from './core/steam';
 import analyzerApp, { MODEL } from './api/ai';
 import type { FormattedGameInfo } from './types/steam';
-
-type Bindings = {
-  MY_KV: KVNamespace;
-  STEAM_API_KEY: string; // Add your Steam API Key secret binding name
-  OPENAI_API_KEY: string;
-};
+import { Bindings } from './types/env';
+import { initDbConnect } from './db';
+import { steamGamesCache } from './db/schema';
+import { eq } from 'drizzle-orm';
+import { isValidSteamId64 } from './util';
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
 // Constants
 const CACHE_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-const KV_KEY_PREFIX = 'steamgames:';
-
-// Helper function for steam ID validation (basic check)
-function isValidSteamId64(id: string): boolean {
-  return /^\d{17}$/.test(id);
-}
 
 app.get('/', (c) => {
   return c.text('Hello Hono! Use /games/:steamid to get game data.');
@@ -31,7 +22,7 @@ app.get('/', (c) => {
 app.get('/games/:steamid', async (c) => {
   const steamId = c.req.param('steamid');
   const apiKey = c.env.STEAM_API_KEY;
-  const kv = c.env.MY_KV;
+  const d1 = c.env.DB;
 
   // --- Input Validation ---
   if (!isValidSteamId64(steamId)) {
@@ -43,23 +34,31 @@ app.get('/games/:steamid', async (c) => {
     throw new HTTPException(500, { message: 'Server configuration error: API key missing.' });
   }
 
-  const cacheKey = `${KV_KEY_PREFIX}${steamId}`;
+  // const cacheKey = `${KV_KEY_PREFIX}${steamId}`;
+
+  const db = initDbConnect(d1);
 
   try {
-    // --- 1. Check KV Cache ---
-    console.log(`Checking cache for key: ${cacheKey}`);
-    const cachedData = await kv.get(cacheKey); // KV returns string | null
+    // --- 1. Check D1 Cache ---
+    const cacheExpiryThreshold = new Date(Date.now() - CACHE_TTL_SECONDS * 1000);
+    console.log(`Checking D1 cache for steamId: ${steamId}, expiry threshold: ${cacheExpiryThreshold.toISOString()}`);
 
-    if (cachedData) {
-      console.log(`Cache hit for ${steamId}. Returning existing data ID.`);
-      // Parse the cached data to get the game count
-      const parsedData = JSON.parse(cachedData);
-      const gameCount = parsedData.length;
+    const cachedResult = await db
+      .select()
+      .from(steamGamesCache)
+      .where(eq(steamGamesCache.steamId, steamId)) // Find matching steamId
+      .limit(1);
+
+    if (cachedResult.length > 0 && cachedResult[0].cachedAt > cacheExpiryThreshold) {
+      const cachedEntry = cachedResult[0];
+      console.log(`D1 Cache hit for ${steamId}. Cached at: ${cachedEntry.cachedAt.toISOString()}`);
+
+      const gameCount = cachedEntry.gameData.length;
 
       // Requirement: Return the ID (key) of the cached data
       return c.json({
-        dataId: cacheKey,
-        source: 'cache',
+        dataId: steamId,
+        source: 'cache-d1',
         gameCount: gameCount,
         message: `Data retrieved from cache. Expires in approximately ${CACHE_TTL_SECONDS} seconds from creation.`
       });
@@ -78,19 +77,30 @@ app.get('/games/:steamid', async (c) => {
       throw new HTTPException(502, { message: `Failed to fetch data from Steam API: ${steamError.message || 'Unknown error'}` });
     }
 
-    // --- 3. Store Fresh Data in KV ---
+    // --- 3. Store Fresh Data in D1 ---
     // Even if the user has no games or is private (empty array), cache the result
     // to avoid hitting the API repeatedly for the same outcome.
-    const jsonData = JSON.stringify(freshGameData);
+    const now = new Date();
 
-    console.log(`Storing ${freshGameData.length} games in KV for ${steamId} with key ${cacheKey} and TTL ${CACHE_TTL_SECONDS}s.`);
-    await kv.put(cacheKey, jsonData, {
-      expirationTtl: CACHE_TTL_SECONDS,
-    });
+    console.log(`Storing/Updating ${freshGameData.length} games in D1 for ${steamId} for ${steamId}. Timestamp: ${now.toISOString()}`);
+
+    await db.insert(steamGamesCache)
+      .values({
+        steamId: steamId,
+        gameData: freshGameData, // Store the stringified JSON
+        cachedAt: now,             // Store the current timestamp
+      })
+      .onConflictDoUpdate({
+        target: steamGamesCache.steamId, // Conflict on steamId
+        set: {                                  // Update these fields if conflict occurs
+          gameData: freshGameData,
+          cachedAt: now,
+        }
+      });
 
     // --- 4. Return the ID of the newly stored data ---
     return c.json({
-      dataId: cacheKey,
+      dataId: steamId,
       source: 'api',
       gameCount: freshGameData.length,
       message: `Fetched fresh data from Steam API and stored in cache. Games found: ${freshGameData.length}.`

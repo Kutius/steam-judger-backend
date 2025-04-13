@@ -6,16 +6,13 @@ import OpenAI from 'openai';
 
 import { promptV3 } from '../../prompt/v3';
 import type { FormattedGameInfo } from '../types/steam';
+import { Bindings } from '../types/env';
+import { initDbConnect } from '../db';
+import { steamGamesCache } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import { isValidSteamId64 } from '../util';
 
-// Define the bindings needed for this specific route/file
-// Note: If you mount this in index.ts, the main Bindings type will cover it.
-// If run standalone, you'd need wrangler.toml configured for these.
-type AnalyzerBindings = {
-    MY_KV: KVNamespace;
-    OPENAI_API_KEY: string; // Add your OpenAI API Key secret binding name
-};
-
-const analyzerApp = new Hono<{ Bindings: AnalyzerBindings }>();
+const analyzerApp = new Hono<{ Bindings: Bindings }>();
 
 // const MODEL = 'deepseek-r1-250120';
 export const MODEL = 'deepseek-v3-250324';
@@ -61,20 +58,18 @@ ${gameDataString}
 
 
 // --- API Endpoint: Analyze Game Data ---
-analyzerApp.get('/:dataId', async (c) => {
-    const dataId = c.req.param('dataId');
-    const kv = c.env.MY_KV;
+analyzerApp.get('/:steamid', async (c) => {
+    const steamId = c.req.param('steamid');
+    const d1 = c.env.DB;
     const openaiApiKey = c.env.OPENAI_API_KEY;
 
     // --- Input Validation ---
-    if (!dataId) {
+    if (!steamId) {
         throw new HTTPException(400, { message: 'Missing dataId parameter.' });
     }
-    // Basic check: KV keys often contain characters not typical in simple IDs
-    // You might want a more specific check if your dataId format is known
-    if (dataId.length < 10 || !dataId.includes(':')) { // Example check
-        console.warn(`Received potentially invalid dataId format: ${dataId}`);
-        // Allow it for now, but log it. KV will handle non-existent keys.
+    // Validate SteamID format
+    if (!isValidSteamId64(steamId)) {
+        throw new HTTPException(400, { message: 'Invalid SteamID format. Please provide a 64-bit SteamID.' });
     }
 
     if (!openaiApiKey) {
@@ -82,27 +77,45 @@ analyzerApp.get('/:dataId', async (c) => {
         throw new HTTPException(500, { message: 'Server configuration error: OpenAI API key missing.' });
     }
 
-    try {
-        // --- 1. Retrieve Data from KV ---
-        console.log(`Attempting to retrieve data from KV with key: ${dataId}`);
-        const jsonData = await kv.get(dataId);
+    const db = initDbConnect(d1);
 
-        if (!jsonData) {
-            console.log(`Data not found in KV for key: ${dataId}`);
-            throw new HTTPException(404, { message: `Data not found for ID: ${dataId}. It might have expired or never existed.` });
+    try {
+        // --- 1. Retrieve Data from D1 ---
+        console.log(`Attempting to retrieve data from D1 with key: ${steamId}`);
+        const results = await db
+          .select()
+          .from(steamGamesCache)
+          .where(eq(steamGamesCache.steamId, steamId)) // Find matching steamId
+          .limit(1);
+
+        if (results.length === 0) {
+            console.log(`Data not found in D1 for steamId: ${steamId}`);
+            // Suggest fetching data first
+            throw new HTTPException(404, { message: `Game data not found for SteamID: ${steamId}. Please fetch data first via /api/games/${steamId}` });
         }
+
+        const rawGameData = results[0].gameData;
 
         // --- 2. Parse Game Data ---
         let gameData: FormattedGameInfo[];
         try {
-            gameData = JSON.parse(jsonData);
-            // Add a basic check to ensure it's an array
+            // Drizzle might parse JSON automatically based on schema ({ mode: 'json' })
+            // but it's safer to handle both string and object cases.
+            if (typeof rawGameData === 'string') {
+                gameData = JSON.parse(rawGameData);
+            } else if (typeof rawGameData === 'object' && rawGameData !== null) {
+                gameData = rawGameData as FormattedGameInfo[]; // Assume it's already parsed
+            } else {
+                 throw new Error('Stored game data is not in a recognizable format (string or object).');
+            }
+
+            // Add a basic check to ensure it's an array after potential parsing
             if (!Array.isArray(gameData)) {
                 throw new Error('Parsed data is not an array.');
             }
-            console.log(`Successfully parsed ${gameData.length} game entries from KV.`);
+            console.log(`Successfully parsed ${gameData.length} game entries from D1 for steamId: ${steamId}.`);
         } catch (parseError: any) {
-            console.error(`Failed to parse JSON data from KV for key ${dataId}:`, parseError);
+            console.error(`Failed to parse JSON data from D1 for steamId ${steamId}:`, parseError);
             throw new HTTPException(500, { message: 'Failed to process stored game data. Data might be corrupted.' });
         }
 
@@ -119,7 +132,7 @@ analyzerApp.get('/:dataId', async (c) => {
         });
 
         // --- 5. Call OpenAI and Stream Response ---
-        console.log(`Sending request to model ${MODEL} for ${dataId}`);
+        console.log(`Sending request to model ${MODEL} for ${steamId}`);
         const stream = await openai.chat.completions.create({
             model: MODEL, // Use the specific o1 model identifier   
             messages: messages,
@@ -128,7 +141,7 @@ analyzerApp.get('/:dataId', async (c) => {
             // max_tokens: 1000, // Optional: Limit response length
         });
 
-        console.log(`Streaming response from OpenAI for ${dataId}...`);
+        console.log(`Streaming response from OpenAI for ${steamId}...`);
         // Use Hono's streamText helper for easy SSE streaming
         return streamText(c, async (streamHelper) => {
             for await (const chunk of stream) {
@@ -138,7 +151,7 @@ analyzerApp.get('/:dataId', async (c) => {
                     // Optional: Add a small delay if needed, e.g., await streamHelper.sleep(10);
                 }
             }
-            console.log(`Finished streaming response for ${dataId}`);
+            console.log(`Finished streaming response for ${steamId}`);
         });
 
     } catch (error: any) {
@@ -148,13 +161,13 @@ analyzerApp.get('/:dataId', async (c) => {
 
         // Handle potential OpenAI API errors
         if (error.response) { // Check if it looks like an OpenAI API error
-            console.error(`OpenAI API Error for ${dataId}: Status ${error.response.status}`, error.response.data);
+            console.error(`OpenAI API Error for ${steamId}: Status ${error.response.status}`, error.response.data);
             throw new HTTPException(502, { message: `Failed to get analysis from AI service: ${error.response.data?.error?.message || 'API error'}` });
         } else if (error.request) { // Network error talking to OpenAI
-            console.error(`Network error calling OpenAI for ${dataId}:`, error.message);
+            console.error(`Network error calling OpenAI for ${steamId}:`, error.message);
             throw new HTTPException(504, { message: 'Network error connecting to AI service.' });
-        } else { // Other errors (KV, parsing handled above, unexpected)
-            console.error(`Unexpected error processing analysis request for ${dataId}:`, error);
+        } else {
+            console.error(`Unexpected error processing analysis request for ${steamId}:`, error);
             throw new HTTPException(500, { message: 'An internal server error occurred during analysis.' });
         }
     }
