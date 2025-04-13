@@ -38,7 +38,7 @@ function formatGamesForPrompt(games: FormattedGameInfo[]): string {
     }
 
     return relevantGames
-        .map(game => `- ${game.name}: ${game.playtimeHours} (Last Played: ${game.lastPlayed})`)
+        .map(game => `- ${game.name}: ${game.playtimeHours}`)
         .join('\n');
 }
 
