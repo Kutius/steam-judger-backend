@@ -4,9 +4,8 @@ import { HTTPException } from 'hono/http-exception';
 import { streamText } from 'hono/streaming';
 import OpenAI from 'openai';
 
-// Assuming FormattedGameInfo is exported from your steamGames file
-import type { FormattedGameInfo } from '../steam'; // Adjust path if needed
 import { promptV3 } from '../../prompt/v3';
+import type { FormattedGameInfo } from '../types/steam';
 
 // Define the bindings needed for this specific route/file
 // Note: If you mount this in index.ts, the main Bindings type will cover it.

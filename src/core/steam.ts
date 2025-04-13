@@ -1,41 +1,5 @@
 import axios, { AxiosError } from 'axios';
-
-// --- Interfaces ---
-
-// Raw data from Steam API
-interface GameInfo {
-  appid: number;
-  name: string;
-  playtime_forever: number;
-  img_icon_url: string;
-  img_logo_url: string;
-  playtime_windows_forever: number;
-  playtime_mac_forever: number;
-  playtime_linux_forever: number;
-  rtime_last_played: number;
-}
-
-interface OwnedGamesResponse {
-  game_count: number;
-  games: GameInfo[];
-}
-
-interface SteamApiResponse {
-  response: OwnedGamesResponse;
-}
-
-// Formatted data structure (Export this if users of the function need the type)
-export interface FormattedGameInfo {
-  appId: number;
-  name: string;
-  playtimeHours: string;
-  lastPlayed: string;
-  iconUrl: string;
-  // Optional: Add playtime breakdown if desired
-  // playtimeWindowsHours?: string;
-  // playtimeMacHours?: string;
-  // playtimeLinuxHours?: string;
-}
+import type { GameInfo, SteamGamesApiResponse, FormattedGameInfo, SteamUserInfo, SteamUserApiResponse } from '../types/steam';
 
 // --- Internal Helper Function: Fetch Raw Game Data ---
 async function getOwnedSteamGames(apiKey: string, steamId: string): Promise<GameInfo[]> {
@@ -50,7 +14,7 @@ async function getOwnedSteamGames(apiKey: string, steamId: string): Promise<Game
 
   try {
     console.log(`Fetching games for Steam ID: ${steamId}...`);
-    const response = await axios.get<SteamApiResponse>(`${apiUrl}?${params.toString()}`);
+    const response = await axios.get<SteamGamesApiResponse>(`${apiUrl}?${params.toString()}`);
 
     if (response.data && response.data.response && response.data.response.games) {
       const ownedGames = response.data.response;
@@ -144,54 +108,97 @@ export async function getFormattedSteamGames(apiKey: string, steamId: string): P
   }
 }
 
-// --- Example Usage (Optional - Keep in a separate file like `example.ts` or `run.ts`) ---
-/*
-// example.ts
-import * as dotenv from 'dotenv';
-import { getFormattedSteamGames } from './steamGames'; // Adjust path as needed
-import * as fs from 'fs/promises';
-import * as path from 'path';
-
-dotenv.config(); // Load .env file
-
-async function runExample() {
-  const apiKey = process.env.STEAM_API_KEY;
-  const steamId = process.env.STEAM_USER_ID;
-
+/**
+ * Fetches basic user information (profile name, avatar, status) for a given Steam ID.
+ *
+ * @param apiKey Your Steam Web API key.
+ * @param steamId The 64-bit Steam ID of the user.
+ * @returns A Promise that resolves to a SteamUserInfo object.
+ * @throws Throws an error if fetching fails (e.g., network error, invalid API key, user not found, unexpected API response).
+ */
+export async function getSteamUserInfo(apiKey: string, steamId: string): Promise<SteamUserInfo> {
   if (!apiKey || !steamId) {
-    console.error('Error: STEAM_API_KEY or STEAM_USER_ID is not defined in the .env file.');
-    process.exit(1);
+    throw new Error('Both apiKey and steamId are required for getting user info.');
   }
+
+  const apiUrl = 'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/';
+  const params = new URLSearchParams({
+    key: apiKey,
+    steamids: steamId, // Note: parameter name is 'steamids' (plural) even for one ID
+    format: 'json',
+  });
 
   try {
-    console.log(`Attempting to fetch games for Steam ID: ${steamId}`);
-    const gameData = await getFormattedSteamGames(apiKey, steamId);
+    console.log(`Fetching user info for Steam ID: ${steamId}...`);
+    const response = await axios.get<SteamUserApiResponse>(`${apiUrl}?${params.toString()}`);
 
-    if (gameData.length > 0) {
-      console.log(`\nSuccessfully retrieved ${gameData.length} formatted games.`);
-      console.log('First game:', gameData[0]);
-
-      // --- Optional: Save the result to a file here ---
-      const filename = `steam_games_formatted_${steamId}.json`;
-      const filePath = path.join(process.cwd(), filename);
-      const jsonData = JSON.stringify(gameData, null, 2);
-      try {
-        await fs.writeFile(filePath, jsonData, 'utf8');
-        console.log(`Formatted game data saved to: ${filePath}`);
-      } catch (saveError) {
-        console.error(`Error saving formatted game data to file ${filePath}:`, saveError);
-      }
-      // --- End Optional Save ---
-
-    } else {
-      console.log(`No game data returned for Steam ID ${steamId}. Profile might be private or user owns no games.`);
+    // --- Response Validation ---
+    if (
+      !response.data ||
+      !response.data.response ||
+      !response.data.response.players ||
+      !Array.isArray(response.data.response.players)
+    ) {
+      console.error('Error: Unexpected user info response structure from Steam API:', response.data);
+      throw new Error('Unexpected user info response structure from Steam API.');
     }
 
+    if (response.data.response.players.length === 0) {
+      console.warn(`Warning: No player data found for Steam ID ${steamId}. User might not exist or ID is invalid.`);
+      throw new Error(`User not found for Steam ID ${steamId}.`);
+    }
+
+    // --- Data Extraction and Formatting ---
+    const rawPlayer = response.data.response.players[0]; // Get the first (and only) player object
+    console.log(`Successfully fetched user info for ${rawPlayer.personaname} (Steam ID: ${steamId}).`);
+
+    const userInfo: SteamUserInfo = {
+      steamId: rawPlayer.steamid,
+      personaName: rawPlayer.personaname,
+      profileUrl: rawPlayer.profileurl,
+      avatarIconUrl: rawPlayer.avatar,
+      avatarMediumUrl: rawPlayer.avatarmedium,
+      avatarFullUrl: rawPlayer.avatarfull,
+      personaState: rawPlayer.personastate,
+      visibilityState: rawPlayer.communityvisibilitystate,
+      // Convert Unix timestamps to Date objects (handle cases where they might be 0 or undefined)
+      lastLogoff: rawPlayer.lastlogoff ? new Date(rawPlayer.lastlogoff * 1000) : undefined,
+      timeCreated: rawPlayer.timecreated ? new Date(rawPlayer.timecreated * 1000) : undefined,
+      realName: rawPlayer.realname, // Include if present
+    };
+
+    return userInfo;
+
   } catch (error) {
-    console.error('\nError during example execution:', error);
-    // The error thrown by getFormattedSteamGames will be caught here
+    // --- Error Handling ---
+    console.error(`Error fetching Steam user info for Steam ID ${steamId}:`);
+    if (axios.isAxiosError(error)) {
+      const axiosError = error as AxiosError;
+      if (axiosError.response) {
+        console.error(`Status: ${axiosError.response.status}`);
+        console.error('Data:', axiosError.response.data);
+        if (axiosError.response.status === 401 || axiosError.response.status === 403) {
+          throw new Error(`Steam API request failed (User Info) with status ${axiosError.response.status}. Check API key.`);
+        }
+        // Add specific handling if needed, e.g., for rate limits (429)
+      } else if (axiosError.request) {
+        console.error('No response received (User Info):', axiosError.request);
+      } else {
+        // Handle errors thrown from response validation above
+        if (error instanceof Error) {
+          console.error('Error Message (User Info):', error.message);
+        } else {
+          console.error('Non-Error thrown (User Info):', error);
+        }
+      }
+    } else if (error instanceof Error) {
+      // Catch errors explicitly thrown within the try block (like "User not found")
+      console.error('Caught internal error (User Info):', error.message);
+    }
+    else {
+      console.error('An unexpected error occurred (User Info):', error);
+    }
+    // Re-throw the error so the caller function knows something went wrong
+    throw error;
   }
 }
-
-runExample();
-*/

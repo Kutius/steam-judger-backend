@@ -2,8 +2,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 // Assuming getFormattedSteamGames is in a separate file
-import { getFormattedSteamGames, FormattedGameInfo } from './steam'; // Adjust path if needed
+import { getFormattedSteamGames, getSteamUserInfo } from './core/steam'; // Adjust path if needed
 import analyzerApp, { MODEL } from './api/ai';
+import type { FormattedGameInfo } from './types/steam';
 
 type Bindings = {
   MY_KV: KVNamespace;
@@ -54,7 +55,7 @@ app.get('/games/:steamid', async (c) => {
       // Parse the cached data to get the game count
       const parsedData = JSON.parse(cachedData);
       const gameCount = parsedData.length;
-      
+
       // Requirement: Return the ID (key) of the cached data
       return c.json({
         dataId: cacheKey,
@@ -109,6 +110,55 @@ app.get('/model', (c) => {
   console.log("Request received for /model endpoint.");
   // Return the value of the MODEL constant in a JSON object
   return c.json({ modelName: MODEL, version: 'v1.2.0413' });
+});
+
+// --- API Endpoint: Get User Profile Data ---
+app.get('/user/:steamid', async (c) => {
+  const steamId = c.req.param('steamid'); 
+  const apiKey = c.env.STEAM_API_KEY;
+
+  // --- Input Validation ---
+  if (!isValidSteamId64(steamId)) {
+    throw new HTTPException(400, { message: 'Invalid SteamID format. Please provide a 64-bit SteamID.' });
+  }
+
+  if (!apiKey) {
+    console.error('STEAM_API_KEY environment variable not set.');
+    throw new HTTPException(500, { message: 'Server configuration error: API key missing.' });
+  }
+
+  try {
+    // Fetch user info from Steam API
+    console.log(`Fetching user info for Steam ID: ${steamId}...`);
+    const userInfo = await getSteamUserInfo(apiKey, steamId);
+    
+    // Return user profile data
+    return c.json({
+      steamId: userInfo.steamId,
+      personaName: userInfo.personaName,
+      profileUrl: userInfo.profileUrl,
+      avatarIconUrl: userInfo.avatarIconUrl,
+      avatarMediumUrl: userInfo.avatarMediumUrl,
+      avatarFullUrl: userInfo.avatarFullUrl,
+      personaState: userInfo.personaState,
+      visibilityState: userInfo.visibilityState
+    });
+
+  } catch (error: any) {
+    // Handle specific errors
+    if (error instanceof HTTPException) {
+      throw error; // Re-throw Hono's exceptions
+    }
+    
+    console.error(`Error fetching user info for Steam ID ${steamId}:`, error.message || error);
+    
+    // Determine appropriate error status based on error message
+    if (error.message && error.message.includes('User not found')) {
+      throw new HTTPException(404, { message: `User not found for Steam ID: ${steamId}` });
+    }
+    
+    throw new HTTPException(502, { message: `Failed to fetch user info from Steam API: ${error.message || 'Unknown error'}` });
+  }
 });
 
 // --- Mount the analyzer routes ---
