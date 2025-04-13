@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "steam-judger-backend",
   "main": "src/index.ts",
+  "minify": true,
   "compatibility_date": "2025-04-10",
   "compatibility_flags": [
     "nodejs_compat"
