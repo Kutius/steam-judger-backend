@@ -18,8 +18,8 @@ type AnalyzerBindings = {
 const analyzerApp = new Hono<{ Bindings: AnalyzerBindings }>();
 
 // const MODEL = 'deepseek-r1-250120';
-export const MODEL = 'deepseek-chat';
-const BASE_URL = 'https://api.deepseek.com'
+export const MODEL = 'deepseek-v3-250324';
+const BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
 
 // Helper to format game data for the prompt
 function formatGamesForPrompt(games: FormattedGameInfo[]): string {
@@ -124,7 +124,7 @@ analyzerApp.get('/:dataId', async (c) => {
             model: MODEL, // Use the specific o1 model identifier   
             messages: messages,
             stream: true,
-            temperature: 1.3, // Adjust temperature for creativity vs consistency
+            temperature: 1, // Adjust temperature for creativity vs consistency
             // max_tokens: 1000, // Optional: Limit response length
         });
 
