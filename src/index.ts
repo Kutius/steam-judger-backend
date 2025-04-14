@@ -152,38 +152,40 @@ app.get('/user/:steamid', async (c) => {
     throw new HTTPException(500, { message: 'Server configuration error: API key missing.' })
   }
 
-  try {
-    // Fetch user info from Steam API
-    console.log(`Fetching user info for Steam ID: ${steamId}...`)
-    const userInfo = await getSteamUserInfo(apiKey, steamId)
+  throw new HTTPException(502, { message: `Failed to fetch user info from Steam API` })
 
-    // Return user profile data
-    return c.json({
-      steamId: userInfo.steamId,
-      personaName: userInfo.personaName,
-      profileUrl: userInfo.profileUrl,
-      avatarIconUrl: userInfo.avatarIconUrl,
-      avatarMediumUrl: userInfo.avatarMediumUrl,
-      avatarFullUrl: userInfo.avatarFullUrl,
-      personaState: userInfo.personaState,
-      visibilityState: userInfo.visibilityState,
-    })
-  }
-  catch (error: any) {
-    // Handle specific errors
-    if (error instanceof HTTPException) {
-      throw error // Re-throw Hono's exceptions
-    }
+  // try {
+  //   // Fetch user info from Steam API
+  //   console.log(`Fetching user info for Steam ID: ${steamId}...`)
+  //   const userInfo = await getSteamUserInfo(apiKey, steamId)
 
-    console.error(`Error fetching user info for Steam ID ${steamId}:`, error.message || error)
+  //   // Return user profile data
+  //   return c.json({
+  //     steamId: userInfo.steamId,
+  //     personaName: userInfo.personaName,
+  //     profileUrl: userInfo.profileUrl,
+  //     avatarIconUrl: userInfo.avatarIconUrl,
+  //     avatarMediumUrl: userInfo.avatarMediumUrl,
+  //     avatarFullUrl: userInfo.avatarFullUrl,
+  //     personaState: userInfo.personaState,
+  //     visibilityState: userInfo.visibilityState,
+  //   })
+  // }
+  // catch (error: any) {
+  //   // Handle specific errors
+  //   if (error instanceof HTTPException) {
+  //     throw error // Re-throw Hono's exceptions
+  //   }
 
-    // Determine appropriate error status based on error message
-    if (error.message && error.message.includes('User not found')) {
-      throw new HTTPException(404, { message: `User not found for Steam ID: ${steamId}` })
-    }
+  //   console.error(`Error fetching user info for Steam ID ${steamId}:`, error.message || error)
 
-    throw new HTTPException(502, { message: `Failed to fetch user info from Steam API: ${error.message || 'Unknown error'}` })
-  }
+  //   // Determine appropriate error status based on error message
+  //   if (error.message && error.message.includes('User not found')) {
+  //     throw new HTTPException(404, { message: `User not found for Steam ID: ${steamId}` })
+  //   }
+
+  //   throw new HTTPException(502, { message: `Failed to fetch user info from Steam API: ${error.message || 'Unknown error'}` })
+  // }
 })
 
 // --- API Endpoint: Query User Game Data ---
