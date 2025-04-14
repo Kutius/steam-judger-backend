@@ -15,7 +15,7 @@ import { isValidSteamId64 } from '../util'
 const analyzerApp = new Hono<{ Bindings: Bindings }>()
 
 // const MODEL = 'deepseek-r1-250120';
-export const MODEL = 'deepseek-chat'
+export const MODEL = 'gemini-2.0-flash'
 const BASE_URL = 'https://api.gpt.ge/v1'
 
 // Helper to format game data for the prompt
