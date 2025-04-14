@@ -14,9 +14,9 @@ import { isValidSteamId64 } from '../util'
 
 const analyzerApp = new Hono<{ Bindings: Bindings }>()
 
-// const MODEL = 'deepseek-r1-250120';
-export const MODEL = 'deepseek-v3-250324'
-const BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3'
+  // const MODEL = 'deepseek-r1-250120';
+export const MODEL = 'deepseek-chat'
+const BASE_URL = 'https://api.deepseek.com'
 
 const STREAM_TIMEOUT_MS = 2 * 60 * 1000 // 2 minutes in milliseconds
 
