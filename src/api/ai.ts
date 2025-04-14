@@ -14,11 +14,9 @@ import { isValidSteamId64 } from '../util'
 
 const analyzerApp = new Hono<{ Bindings: Bindings }>()
 
-  // const MODEL = 'deepseek-r1-250120';
+// const MODEL = 'deepseek-r1-250120';
 export const MODEL = 'deepseek-chat'
-const BASE_URL = 'https://api.deepseek.com'
-
-const STREAM_TIMEOUT_MS = 2 * 60 * 1000 // 2 minutes in milliseconds
+const BASE_URL = 'https://api.gpt.ge/v1'
 
 // Helper to format game data for the prompt
 function formatGamesForPrompt(games: FormattedGameInfo[]): string {
@@ -79,7 +77,6 @@ analyzerApp.get('/:steamid', async (c) => {
   }
 
   const db = initDbConnect(d1)
-  let timeoutId: number | undefined
 
   try {
     // --- 1. Retrieve Data from D1 ---
@@ -137,84 +134,36 @@ analyzerApp.get('/:steamid', async (c) => {
     })
 
     // --- 5. Call OpenAI and Stream Response ---
-    const controller = new AbortController()
-    const signal = controller.signal
-
-    // Set the timeout
-    timeoutId = setTimeout(() => {
-      console.error(`Stream timeout triggered for ${steamId} after ${STREAM_TIMEOUT_MS}ms.`)
-      controller.abort()
-    }, STREAM_TIMEOUT_MS)
-
-    console.log(`Sending request to model ${MODEL} for ${steamId} with a ${STREAM_TIMEOUT_MS}ms timeout.`)
-
+    console.log(`Sending request to model ${MODEL} for ${steamId}`)
     const stream = await openai.chat.completions.create({
       model: MODEL, // Use the specific o1 model identifier
       messages,
       stream: true,
       temperature: 1, // Adjust temperature for creativity vs consistency
       // max_tokens: 1000, // Optional: Limit response length
-    }, { signal })
+    }, { timeout: 2 * 60 * 1000 })
 
     console.log(`Streaming response from OpenAI for ${steamId}...`)
     // Use Hono's streamText helper for easy SSE streaming
     return streamText(c, async (streamHelper) => {
-      try {
-        for await (const chunk of stream) {
-          if (signal.aborted) {
-            console.warn(`Stream processing loop detected abort signal for ${steamId}.`)
-            // Error will likely be thrown by the iterator soon anyway
-            break
-          }
-          const content = chunk.choices[0]?.delta?.content || ''
-          if (content) {
-            await streamHelper.write(content)
-            // Optional: Add a small delay if needed, e.g., await streamHelper.sleep(10);
-          }
-        }
-        console.log(`Finished streaming response for ${steamId}`)
-      }
-      catch (error: any) {
-        if (error.name === 'AbortError') {
-          console.error(`Stream aborted for ${steamId}, likely due to timeout.`)
-          // Throwing HTTPException here might not work as expected inside streamText
-          // depending on Hono version and how it handles errors mid-stream.
-          // It might just close the connection. Logging is important.
-          // We can try writing an error message to the stream if needed,
-          // but throwing is cleaner if Hono handles it.
-          // Let's throw a specific timeout error.
-          throw new HTTPException(408, { message: `Stream timed out after ${STREAM_TIMEOUT_MS / 1000} seconds.` })
-        }
-        else {
-          // Handle other potential errors during streaming
-          console.error(`Error during stream processing for ${steamId}:`, error)
-          // Re-throw other errors to be caught by the outer handler
-          throw error
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || ''
+        console.log(`Received chunk for ${steamId}:`, content)
+        if (content) {
+          await streamHelper.write(content)
+          // Optional: Add a small delay if needed, e.g., await streamHelper.sleep(10);
         }
       }
-      finally {
-        if (timeoutId !== undefined) {
-          clearTimeout(timeoutId)
-          console.log(`Timeout cleared for ${steamId}`)
-        }
-      }
+      console.log(`Finished streaming response for ${steamId}`)
     })
   }
   catch (error: any) {
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId)
-      console.log(`Timeout cleared during error handling for ${steamId}`)
-    }
-
     if (error instanceof HTTPException) {
       throw error // Re-throw Hono's exceptions
     }
 
-    if (error.name === 'AbortError') {
-      console.error(`OpenAI request aborted for ${steamId}, likely due to timeout before streaming started.`)
-      throw new HTTPException(408, { message: `Request timed out after ${STREAM_TIMEOUT_MS / 1000} seconds while initiating AI connection.` })
-    }
-    else if (error.response) { // Check if it looks like an OpenAI API error
+    // Handle potential OpenAI API errors
+    if (error.response) { // Check if it looks like an OpenAI API error
       console.error(`OpenAI API Error for ${steamId}: Status ${error.response.status}`, error.response.data)
       throw new HTTPException(502, { message: `Failed to get analysis from AI service: ${error.response.data?.error?.message || 'API error'}` })
     }
